@@ -1,0 +1,8 @@
+{
+"help_text_newbie":"Set up your account by replying with !setup.\n\n\nThis bot exists to send you reminders for events/important things to remember through discord!\n\n\nSome examples include: Remembering to eat and drink, or remembering to brush your teeth",
+"help_text_user":"TODO",
+"setup_text":"We're gonna ask you a few questions to set up your account, one second :)",
+"setup_question_1":"Do you consent to us storeing information on your timezone and some tasks that you supply us with?\n\n We use this information to make sure we can serve you the correct reminders at the correct time, and to make sure that your trackers stay accurate.",
+"setup_question_2": "What tz database timezone are you in?\n\n You can find a list here: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones, enter the \"TZ database name\"",
+"setup_thankyou": "Thanks for being patient! Your account is now set up, and you can delete it at any time by messaging the command !delete\n\n To find out how to setup trackers and reminders use !help again"
+}
