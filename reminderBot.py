@@ -3,7 +3,7 @@ import sqlite3
 import atexit
 import json
 import os
-
+import time, sched, pytz
 
 # Initiating bot with settings
 files = os.listdir()
@@ -11,7 +11,7 @@ files = os.listdir()
 # list of 3-tuples (var_name, description, processing function)
 settings_list = [("db_name", "What would you like to name your database file (text): ", str),
                 ("token", "What's your discord bots token? (text): ", str),
-                ("state_lifetime", "How long should user conversation states last in milliseconds? (int): ", int)]
+                ("state_lifetime", "How long should user conversation states last in seconds? (int): ", int)]
 
 if "settings.conf" in files:
     settings_file = open("settings.conf", "r")
@@ -125,7 +125,34 @@ client = discord.Client()
 # Tracks where users currently are in an interaction
 
 # map user uid -> [state, expiry timestamp]
-user_cur_state = {}
+user_diag_state = {}
+user_diag_deletion_schedule = {}
+
+# Managing this global state
+s = sched.scheduler(time.time, time.sleep)
+def add_state(uid, state):
+    """Adds the state "state" to user given by uid. Also manages expiry"""
+    if uid in user_diag_deletion_schedule:
+        s.cancel(user_diag_deletion_schedule[uid])
+        del user_diag_deletion_schedule[uid]
+    cur_time = time.time()
+    user_diag_state[uid] = (state, cur_time+settings["state_lifetime"],)
+    user_diag_deletion_schedule[uid] = s.enter(settings["state_lifetime"],1,remove_state,argument=(uid))
+    return
+
+def remove_state(uid):
+    """Removes the state attached to user uid"""
+    del user_diag_state[uid]
+    return
+
+async def retrieve_state(uid):
+    return user_diag_state[uid][0]
+    
+def forcefully_remove_state(uid):
+    if uid in user_diag_deletion_schedule:
+        del user_diag_deletion_schedule[uid]
+    if uid in user_diag_state:
+        del user_diag_state[uid]
 
 @client.event
 async def on_ready():
@@ -137,8 +164,52 @@ async def on_message(message):
     if message.author == client.user:
         return
     
-    if isinstance(message.channel, discord.DMChannel) and message.content.startswith("!help"):
-        await message.channel.send(dialogue["help_text_newbie"])
+    if isinstance(message.channel, discord.DMChannel):
+        if message.author.id not in user_diag_state:
+            if message.content.startswith("!help"):
+                await message.channel.send(dialogue["help_text_newbie"])
+
+            if message.content.startswith("!setup"):
+                add_state(message.author.id, ("setup", 1,))
+                await message.channel.send(dialogue["setup_text"])
+                await message.channel.send(dialogue["setup_question_1"])
+        else:
+            # Handling stateful interactions
+            await stateful_handler(message)
+
+async def stateful_handler(message):
+    state = await retrieve_state(message.author.id)
+    if state[0] == "setup":
+        await setup_handler(message, state)
+
+    return
+
+async def setup_handler(message, state):
+    if state[1] == 1:
+        if message.content.upper() == "Y" or message.content.upper() == "YES":
+            add_state(message.author.id, ("setup", 2))
+            await message.channel.send(dialogue["setup_question_2"])
+        elif message.content.upper() == "N" or message.content.upper() == "NO":
+            forcefully_remove_state(message.author.id)
+            await message.channel.send(dialogue["no_permission_given"])
+        else:
+            await message.channel.send(dialogue["setup1_not_sure"])
+
+    elif state[1] == 2:
+        if message.content in pytz.all_timezones:
+            c.execute('''INSERT INTO users VALUES (?,?)''', (message.author.id, message.content.strip(),))
+            conn.commit()
+            await message.channel.send(dialogue["setup_thankyou"])
+        else:
+            await message.channel.send(dialogue["setup2_not_valid_timezone"])
+
+
+    else:
+        forcefully_remove_state(message.author.id)
+        await message.channel.send(dialogue["Error_during_setup"])
+
+    return
+
 
 client.run(settings["token"])
 
